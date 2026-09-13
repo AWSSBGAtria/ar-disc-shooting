@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0c0e0c" />
+    <title>DISC//HUNT — AR reflex game</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="brand-mark"><span class="brand-slash">//</span> DISC<span>HUNT</span></div>
+        <div class="session-readout"><span class="live-dot"></span><span id="trackingStatus">CAMERA STANDBY</span></div>
+        <div class="topbar-code">AR-01 / REFLEX LAB</div>
+      </header>
+
+      <section class="game-wrap" aria-label="Disc Hunt game">
+        <div class="hud hud-left">
+          <div class="hud-label">SCORE</div>
+          <div class="score-value" id="scoreValue">0000</div>
+          <div class="hud-sub"><span class="mini-mark"></span> STREAK <b id="streakValue">00</b></div>
+        </div>
+        <div class="hud hud-right">
+          <div class="hud-label">ROUND TIME</div>
+          <div class="timer-value" id="timerValue">01:00</div>
+          <div class="hud-sub">TARGETS <b id="targetValue">06</b></div>
+        </div>
+
+        <canvas id="gameCanvas" aria-label="Game field. Move your pointer to aim and pull back quickly to fire."></canvas>
+        <div class="webcam-preview" id="webcamPreview" aria-label="Live webcam hand preview">
+          <video id="cameraFeed" playsinline muted></video>
+          <canvas id="handOverlay" aria-hidden="true"></canvas>
+          <div class="preview-label"><span class="preview-dot"></span> HAND CAM</div>
+        </div>
+        <div class="scanlines"></div>
+        <div class="corner corner-tl"></div><div class="corner corner-tr"></div>
+        <div class="corner corner-bl"></div><div class="corner corner-br"></div>
+
+        <div class="game-overlay" id="introOverlay">
+          <div class="overlay-kicker">FIELD TEST 001 <span></span> LIVE</div>
+          <h1>HUNT THE<br /><em>FLYING EDGE.</em></h1>
+          <p class="intro-copy">Shape your hand like a pistol. Aim with your index finger. Pull back fast to fire.</p>
+          <div class="posture-guide" id="postureGuide"><span class="posture-light" id="postureLight"></span><span id="postureMessage">ENABLE CAMERA TO CALIBRATE</span></div>
+          <div class="control-row">
+            <button class="primary-btn" id="startButton" disabled><span class="button-icon">↗</span> START ROUND</button>
+            <button class="secondary-btn" id="cameraButton">ENABLE CAMERA</button>
+          </div>
+          <div class="instructions">
+            <div><span class="instruction-num">01</span><span>AIM</span><small>move hand / pointer</small></div>
+            <div><span class="instruction-num">02</span><span>RECOIL</span><small>pull back quickly</small></div>
+            <div><span class="instruction-num">03</span><span>BURST</span><small>hit the discs</small></div>
+          </div>
+        </div>
+
+        <div class="game-overlay is-hidden" id="gameOverOverlay">
+          <div class="overlay-kicker">ROUND COMPLETE <span></span> REPORT</div>
+          <h2>Clean<br /><em>SWEEP.</em></h2>
+          <div class="final-score-block"><span>FINAL SCORE</span><strong id="finalScore">0000</strong></div>
+          <div class="result-line"><span>BEST STREAK</span><b id="finalStreak">00</b></div>
+          <button class="primary-btn" id="restartButton"><span class="button-icon">↻</span> RUN IT BACK</button>
+        </div>
+
+        <div class="crosshair" id="crosshair"><div class="crosshair-ring"></div><div class="crosshair-dot"></div><span class="crosshair-label">LOCK</span></div>
+        <div class="aim-hint" id="aimHint">MOVE TO AIM <span>↗</span></div>
+        <div class="bottom-status"><span id="modeLabel">POINTER MODE</span><span class="status-divider"></span><span>60 SEC LIMIT</span><span class="status-divider"></span><span>HIT ZONE 32PX</span></div>
+      </section>
+      <footer class="footer-note"><span>DISC//HUNT</span> A REFLEX STUDY IN SPATIAL TRACKING <span>v1.0</span></footer>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
