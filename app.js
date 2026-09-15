@@ -17,6 +17,8 @@ const aimHint = document.getElementById('aimHint');
 const startButton = document.getElementById('startButton');
 const postureGuide = document.getElementById('postureGuide');
 const postureMessage = document.getElementById('postureMessage');
+const audioToggle = document.getElementById('audioToggle');
+const audioLabel = document.getElementById('audioLabel');
 
 let width = 0, height = 0, animationId, lastFrame = 0, lastShot = 0;
 let discs = [], bursts = [], score = 0, streak = 0, bestStreak = 0, timeLeft = 60, playing = false;
@@ -24,10 +26,50 @@ let pointer = { x: 0, y: 0, viewX: 0, viewY: 0, lastX: 0, lastY: 0, lastMove: pe
 let handMode = false, camera = null, previousHandX = null, previousHandY = null, previousHandTime = 0;
 let previousRawX = null, previousRawY = null, previousRawTime = 0, smoothedLandmarks = null, lastHandSeenAt = 0, lastValidPoseAt = 0, poseWasValid = false, lastValidLandmarks = null;
 let postureReady = false, validPoseSince = 0;
+let audioContext = null, masterGain = null, musicGain = null, sfxGain = null, musicTimer = null, musicStep = 0, audioEnabled = false;
 
 const palette = ['#c8f23e', '#e8eadb', '#ff6b35'];
 const rand = (min, max) => Math.random() * (max - min) + min;
 const pad = n => String(Math.max(0, Math.ceil(n))).padStart(2, '0');
+
+function ensureAudio() {
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioContext.createGain(); masterGain.gain.value = .8; masterGain.connect(audioContext.destination);
+    musicGain = audioContext.createGain(); musicGain.gain.value = .3; musicGain.connect(masterGain);
+    sfxGain = audioContext.createGain(); sfxGain.gain.value = .8; sfxGain.connect(masterGain);
+  }
+  if (audioContext.state === 'suspended') audioContext.resume();
+  return audioContext;
+}
+function tone(frequency, duration=.12, type='sine', volume=.12, destination=sfxGain, delay=0) {
+  if (!audioEnabled || !ensureAudio()) return;
+  const now = audioContext.currentTime + delay;
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+  oscillator.type = type; oscillator.frequency.setValueAtTime(frequency, now);
+  gain.gain.setValueAtTime(.0001, now); gain.gain.exponentialRampToValueAtTime(volume, now + .012); gain.gain.exponentialRampToValueAtTime(.0001, now + duration);
+  oscillator.connect(gain); gain.connect(destination); oscillator.start(now); oscillator.stop(now + duration + .03);
+}
+function scheduleMusicNote() {
+  if (!audioEnabled) return;
+  const notes = [110, 0, 146.83, 0, 164.81, 0, 130.81, 0, 98, 0, 146.83, 0, 174.61, 0, 130.81, 0];
+  const note = notes[musicStep++ % notes.length];
+  if (note) { tone(note, .42, 'triangle', .045, musicGain); tone(note * 2, .16, 'sine', .018, musicGain, .08); }
+}
+function startMusic() {
+  ensureAudio();
+  if (musicTimer || !audioEnabled) return;
+  musicStep = 0; scheduleMusicNote(); musicTimer = window.setInterval(scheduleMusicNote, 360);
+}
+function stopMusic() { if (musicTimer) { clearInterval(musicTimer); musicTimer = null; } }
+function setAudioEnabled(enabled) {
+  audioEnabled = enabled;
+  if (enabled) { ensureAudio(); audioToggle.classList.add('is-on'); audioToggle.setAttribute('aria-pressed', 'true'); audioToggle.setAttribute('aria-label', 'Turn sound off'); audioLabel.textContent = 'SOUND ON'; if (playing) startMusic(); }
+  else { stopMusic(); if (masterGain) masterGain.gain.setTargetAtTime(0, audioContext.currentTime, .03); audioToggle.classList.remove('is-on'); audioToggle.setAttribute('aria-pressed', 'false'); audioToggle.setAttribute('aria-label', 'Turn sound on'); audioLabel.textContent = 'SOUND OFF'; }
+  if (enabled && masterGain) masterGain.gain.setTargetAtTime(.8, audioContext.currentTime, .03);
+}
+audioToggle.addEventListener('click', () => setAudioEnabled(!audioEnabled));
 
 function resize() { const rect = canvas.getBoundingClientRect(); const dpr = Math.min(window.devicePixelRatio || 1, 2); width = rect.width; height = rect.height; canvas.width = width * dpr; canvas.height = height * dpr; ctx.setTransform(dpr,0,0,dpr,0,0); handOverlay.width=320; handOverlay.height=240; if (!pointer.x) { pointer.x = width / 2; pointer.y = height / 2; pointer.viewX=pointer.x; pointer.viewY=pointer.y; } }
 window.addEventListener('resize', resize); resize();
@@ -41,11 +83,11 @@ canvas.addEventListener('pointermove', pointerMove); canvas.addEventListener('po
 function spawnDisc() { const r = rand(20, 31); const edge = Math.floor(rand(0,4)); let x, y; if(edge===0){x=-r;y=rand(90,height-70);} else if(edge===1){x=width+r;y=rand(90,height-70);} else if(edge===2){x=rand(40,width-40);y=-r;} else {x=rand(40,width-40);y=height+r;} const angle=Math.atan2(rand(80,height-80)-y,rand(40,width-40)-x); discs.push({x,y,r, vx:Math.cos(angle)*rand(55,105), vy:Math.sin(angle)*rand(55,105), spin:rand(-2,2), rotation:rand(0,6), tilt:rand(.58,.78), depth:rand(4,8), hue:palette[Math.floor(rand(0,palette.length))], age:0}); }
 function seedDiscs() { discs=[]; for(let i=0;i<6;i++){ spawnDisc(); discs[i].x=rand(80,width-80); discs[i].y=rand(100,height-100); discs[i].vx=rand(-65,65); discs[i].vy=rand(-45,45); } targetValue.textContent='06'; }
 
-function startGame() { if(!postureReady)return; score=0; streak=0; bestStreak=0; timeLeft=60; playing=true; scoreValue.textContent='0000'; streakValue.textContent='00'; timerValue.textContent='01:00'; introOverlay.classList.add('is-hidden'); gameOverOverlay.classList.add('is-hidden'); aimHint.classList.remove('is-hidden'); seedDiscs(); lastFrame=performance.now(); cancelAnimationFrame(animationId); animationId=requestAnimationFrame(loop); }
-function endGame() { playing=false; document.getElementById('finalScore').textContent=String(score).padStart(4,'0'); document.getElementById('finalStreak').textContent=String(bestStreak).padStart(2,'0'); gameOverOverlay.classList.remove('is-hidden'); aimHint.classList.add('is-hidden'); }
+function startGame() { if(!postureReady)return; setAudioEnabled(true); tone(220,.18,'square',.06); startMusic(); score=0; streak=0; bestStreak=0; timeLeft=60; playing=true; scoreValue.textContent='0000'; streakValue.textContent='00'; timerValue.textContent='01:00'; introOverlay.classList.add('is-hidden'); gameOverOverlay.classList.add('is-hidden'); aimHint.classList.remove('is-hidden'); seedDiscs(); lastFrame=performance.now(); cancelAnimationFrame(animationId); animationId=requestAnimationFrame(loop); }
+function endGame() { playing=false; stopMusic(); tone(130,.35,'sawtooth',.06); document.getElementById('finalScore').textContent=String(score).padStart(4,'0'); document.getElementById('finalStreak').textContent=String(bestStreak).padStart(2,'0'); gameOverOverlay.classList.remove('is-hidden'); aimHint.classList.add('is-hidden'); }
 document.getElementById('startButton').addEventListener('click', startGame); document.getElementById('restartButton').addEventListener('click', startGame);
 
-function shoot(aimX=pointer.x,aimY=pointer.y) { lastShot=performance.now(); let hit=-1; let nearest=Infinity; discs.forEach((d,i)=>{const distance=Math.hypot(d.x-aimX,d.y-aimY); if(distance<d.r+22&&distance<nearest){nearest=distance;hit=i;}}); if(hit>=0){ const d=discs.splice(hit,1)[0]; score+=100+streak*20; streak++; bestStreak=Math.max(bestStreak,streak); bursts.push({x:d.x,y:d.y,r:2,life:1,color:d.hue}); scoreValue.textContent=String(score).padStart(4,'0'); streakValue.textContent=String(streak).padStart(2,'0'); } else { streak=0; streakValue.textContent='00'; bursts.push({x:aimX,y:aimY,r:2,life:.55,color:'#ff6b35'}); } while(discs.length<6) spawnDisc(); }
+function shoot(aimX=pointer.x,aimY=pointer.y) { lastShot=performance.now(); tone(88,.07,'square',.07); tone(55,.1,'sawtooth',.04,sfxGain,.035); let hit=-1; let nearest=Infinity; discs.forEach((d,i)=>{const distance=Math.hypot(d.x-aimX,d.y-aimY); if(distance<d.r+22&&distance<nearest){nearest=distance;hit=i;}}); if(hit>=0){ const d=discs.splice(hit,1)[0]; tone(440,.09,'triangle',.08); tone(660,.18,'sine',.06,sfxGain,.06); score+=100+streak*20; streak++; bestStreak=Math.max(bestStreak,streak); bursts.push({x:d.x,y:d.y,r:2,life:1,color:d.hue}); scoreValue.textContent=String(score).padStart(4,'0'); streakValue.textContent=String(streak).padStart(2,'0'); } else { tone(150,.12,'sine',.045); streak=0; streakValue.textContent='00'; bursts.push({x:aimX,y:aimY,r:2,life:.55,color:'#ff6b35'}); } while(discs.length<6) spawnDisc(); }
 
 function drawDisc(d) { ctx.save(); ctx.translate(d.x,d.y); ctx.rotate(d.rotation); ctx.scale(1,d.tilt); ctx.globalAlpha=.32; ctx.fillStyle='#000'; ctx.filter='blur(5px)'; ctx.beginPath(); ctx.ellipse(d.depth*.8,d.depth*1.8,d.r*1.03,d.r*.84,0,0,Math.PI*2); ctx.fill(); ctx.filter='none'; ctx.globalAlpha=1; for(let layer=d.depth;layer>0;layer-=1){ ctx.fillStyle=layer%2?'#53620f':'#313a16'; ctx.beginPath();ctx.ellipse(0,layer*.7,d.r,d.r*.86,0,0,Math.PI*2);ctx.fill(); } const shell=ctx.createRadialGradient(-d.r*.35,-d.r*.45,d.r*.08,d.r*.2,d.r*.3,d.r*1.1); shell.addColorStop(0,'#f2f7d0'); shell.addColorStop(.18,d.hue); shell.addColorStop(.63,d.hue); shell.addColorStop(1,'#343d18'); ctx.fillStyle=shell;ctx.shadowBlur=18;ctx.shadowColor=d.hue;ctx.beginPath();ctx.ellipse(0,0,d.r,d.r*.86,0,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0; ctx.strokeStyle='rgba(255,255,255,.86)';ctx.lineWidth=1.5;ctx.beginPath();ctx.ellipse(0,0,d.r*.88,d.r*.74,0,Math.PI*1.08,Math.PI*1.86);ctx.stroke();ctx.strokeStyle='rgba(12,14,12,.6)';ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(0,0,d.r*.57,d.r*.45,0,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.moveTo(-d.r*.72,0);ctx.lineTo(d.r*.72,0);ctx.moveTo(0,-d.r*.56);ctx.lineTo(0,d.r*.56);ctx.stroke();ctx.fillStyle='#e8eadb';ctx.globalAlpha=.85;ctx.beginPath();ctx.ellipse(-d.r*.22,-d.r*.29,d.r*.12,d.r*.055,-.4,0,Math.PI*2);ctx.fill();ctx.restore(); }
 function drawBackground(t) { ctx.clearRect(0,0,width,height); ctx.strokeStyle='rgba(200,242,62,.045)';ctx.lineWidth=1; const grid=80; for(let x=(t*.01)%grid;x<width;x+=grid){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,height);ctx.stroke();} for(let y=(t*.008)%grid;y<height;y+=grid){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(width,y);ctx.stroke();} ctx.strokeStyle='rgba(200,242,62,.08)';ctx.beginPath();ctx.arc(width/2,height/2,Math.min(width,height)*.31,0,Math.PI*2);ctx.stroke(); }
